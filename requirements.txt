@@ -1,0 +1,5 @@
+# Install torch matching the target machine's CUDA version; the generic wheel
+# below is CPU+CUDA for common Linux setups. See https://pytorch.org/get-started
+# if the GPU is not picked up (check with: python -c "import torch; print(torch.cuda.is_available())").
+torch>=2.0
+numpy>=1.24

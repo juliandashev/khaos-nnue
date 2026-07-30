@@ -1,0 +1,12 @@
+data/
+nets/
+!nets/.gitkeep
+!data/.gitkeep
+
+venv/
+__pycache__/
+*.pyc
+*.pt
+*.nnue
+*.bin
+*.log
