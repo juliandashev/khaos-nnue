@@ -107,13 +107,16 @@ def main():
     feature_weights = [rng.randint(-500, 500)
                        for _ in range(quant.INPUTS * quant.HIDDEN)]
     feature_bias = [rng.randint(-500, 500) for _ in range(quant.HIDDEN)]
-    output_weights = [rng.randint(-300, 300) for _ in range(2 * quant.HIDDEN)]
+    l2_weights = [rng.randint(-500, 500)
+                  for _ in range(quant.L2 * 2 * quant.HIDDEN)]
+    l2_bias = [rng.randint(-100000, 100000) for _ in range(quant.L2)]
+    output_weights = [rng.randint(-300, 300) for _ in range(quant.L2)]
     output_bias = rng.randint(-100000, 100000)
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "round_trip.nnue"
-        netformat.write_net(path, feature_weights, feature_bias,
-                            output_weights, output_bias)
+        netformat.write_net(path, feature_weights, feature_bias, l2_weights,
+                            l2_bias, output_weights, output_bias)
 
         check("file size matches expected_size()",
               path.stat().st_size == netformat.expected_size(),
@@ -122,13 +125,16 @@ def main():
         back = netformat.read_net(path)
         check("feature_weights survive", back["feature_weights"] == feature_weights)
         check("feature_bias survives", back["feature_bias"] == feature_bias)
+        check("l2_weights survive", back["l2_weights"] == l2_weights)
+        check("l2_bias survives", back["l2_bias"] == l2_bias)
         check("output_weights survive", back["output_weights"] == output_weights)
         check("output_bias survives", back["output_bias"] == output_bias)
 
         # Out-of-range weights must be refused rather than silently truncated.
         try:
             netformat.write_net(path, [70000] + feature_weights[1:],
-                                feature_bias, output_weights, output_bias)
+                                feature_bias, l2_weights, l2_bias,
+                                output_weights, output_bias)
             check("rejects out-of-int16 weights", False, "no exception raised")
         except netformat.NetFormatError:
             check("rejects out-of-int16 weights", True)
@@ -136,7 +142,7 @@ def main():
         # Wrong-length inputs must be refused too.
         try:
             netformat.write_net(path, feature_weights[:-1], feature_bias,
-                                output_weights, output_bias)
+                                l2_weights, l2_bias, output_weights, output_bias)
             check("rejects wrong-length weights", False, "no exception raised")
         except netformat.NetFormatError:
             check("rejects wrong-length weights", True)

@@ -25,9 +25,8 @@ from khaosnnue import quant  # noqa: E402
 
 
 def export_checkpoint(model, path):
-    feature_weights, feature_bias, output_weights, output_bias = (
-        netmodel.quantized_tensors(model)
-    )
+    (feature_weights, feature_bias, l2_weights, l2_bias,
+     output_weights, output_bias) = netmodel.quantized_tensors(model)
 
     worst = quant.accumulator_headroom(
         max(abs(w) for w in feature_weights),
@@ -39,8 +38,8 @@ def export_checkpoint(model, path):
             f"(32767). Lower quant.FEATURE_WEIGHT_CLAMP and retrain."
         )
 
-    netformat.write_net(path, feature_weights, feature_bias,
-                        output_weights, output_bias)
+    netformat.write_net(path, feature_weights, feature_bias, l2_weights,
+                        l2_bias, output_weights, output_bias)
     return worst
 
 

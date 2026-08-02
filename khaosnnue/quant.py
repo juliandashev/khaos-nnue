@@ -7,7 +7,8 @@ silently mis-scaled evaluation.
 
 # Topology
 INPUTS = 768
-HIDDEN = 256
+HIDDEN = 256  # feature-transformer / accumulator width
+L2 = 32       # post-accumulator hidden layer width
 
 # Feature weights/biases are stored as round(w * QA); the accumulator therefore
 # lives on the same scale as a clipped ReLU whose ceiling is QA.
@@ -28,6 +29,10 @@ EVAL_SCALE = 1640
 # the bias plus 32 feature weights, so keeping |w| under this bound leaves
 # 32 * 1.98 * 255 ~= 16.2k of headroom inside int16's 32767.
 FEATURE_WEIGHT_CLAMP = 1.98
+
+# Post-accumulator weights are stored int16 as round(w * QB), so |w| must stay
+# under 32767 / QB for the export not to overflow.
+LAYER_WEIGHT_CLAMP = 511.0
 
 # Worst-case number of pieces contributing to one accumulator.
 MAX_PIECES = 32

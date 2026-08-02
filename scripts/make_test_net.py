@@ -32,12 +32,15 @@ def main():
     feature_weights = [rng.randint(-64, 64)
                        for _ in range(quant.INPUTS * quant.HIDDEN)]
     feature_bias = [rng.randint(-64, 64) for _ in range(quant.HIDDEN)]
-    output_weights = [rng.randint(-32, 32) for _ in range(2 * quant.HIDDEN)]
+    l2_weights = [rng.randint(-64, 64)
+                  for _ in range(quant.L2 * 2 * quant.HIDDEN)]
+    l2_bias = [rng.randint(-128, 128) for _ in range(quant.L2)]
+    output_weights = [rng.randint(-32, 32) for _ in range(quant.L2)]
     output_bias = rng.randint(-1000, 1000)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    netformat.write_net(args.out, feature_weights, feature_bias,
-                        output_weights, output_bias)
+    netformat.write_net(args.out, feature_weights, feature_bias, l2_weights,
+                        l2_bias, output_weights, output_bias)
 
     print(f"wrote {args.out} ({netformat.expected_size()} bytes, seed {args.seed})")
 

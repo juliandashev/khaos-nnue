@@ -1,17 +1,10 @@
-"""The trainable model. Requires torch.
+"""The trainable model (torch). Topology matches include/nnue.h:
 
-Topology, matching include/nnue.h:
+    768 -> HIDDEN (feature transformer) x2 -> concat -> L2 -> 1
 
-    768 -> HIDDEN  (feature transformer, shared by both perspectives)
-    concat[own, their] -> 1
-
-Activation is a clipped ReLU on [0, 1]; at inference the same clamp happens on
-[0, QA] because the quantized accumulator is QA times the float one.
-
-The float forward pass here is written to mirror the integer one exactly (same
-operation order, same clamp), so a trained checkpoint and its exported net
-should agree to within quantization rounding. scripts/check_engine.py is what
-verifies the exported net against the engine.
+Clipped ReLU on [0, 1] (quantized: [0, QA]). The float forward mirrors the
+integer one so a checkpoint and its export agree up to rounding;
+scripts/check_engine.py verifies that against the engine.
 """
 
 import torch
@@ -21,25 +14,25 @@ from . import quant
 
 
 class KhaosNet(nn.Module):
-    def __init__(self, hidden=quant.HIDDEN):
+    def __init__(self, hidden=quant.HIDDEN, l2=quant.L2):
         super().__init__()
         self.hidden = hidden
 
-        # Feature transformer. Stored as (hidden, INPUTS) like any nn.Linear;
-        # the exporter transposes to the feature-major layout the engine wants.
+        # Feature transformer (exporter transposes to feature-major), then one
+        # hidden layer over the concatenated perspectives, then the output.
         self.feature_transformer = nn.Linear(quant.INPUTS, hidden)
-
-        # Output layer over [own half, their half].
-        self.output = nn.Linear(2 * hidden, 1)
+        self.hidden2 = nn.Linear(2 * hidden, l2)
+        self.output = nn.Linear(l2, 1)
 
         self._init_weights()
 
     def _init_weights(self):
-        # Small init keeps the early accumulator well inside int16 range and
-        # avoids saturating the clipped ReLU before anything is learned.
+        # Small feature init keeps the accumulator inside int16 range.
         nn.init.uniform_(self.feature_transformer.weight, -0.01, 0.01)
         nn.init.zeros_(self.feature_transformer.bias)
-        nn.init.uniform_(self.output.weight, -0.05, 0.05)
+        nn.init.uniform_(self.hidden2.weight, -0.1, 0.1)
+        nn.init.zeros_(self.hidden2.bias)
+        nn.init.uniform_(self.output.weight, -0.1, 0.1)
         nn.init.zeros_(self.output.bias)
 
     def forward(self, own_features, their_features):
@@ -55,11 +48,12 @@ class KhaosNet(nn.Module):
         own_acc = self.feature_transformer(own_features)
         their_acc = self.feature_transformer(their_features)
 
-        activated = torch.cat(
+        x = torch.cat(
             [own_acc.clamp(0.0, 1.0), their_acc.clamp(0.0, 1.0)], dim=1
         )
+        h = self.hidden2(x).clamp(0.0, 1.0)
 
-        return self.output(activated).squeeze(1)
+        return self.output(h).squeeze(1)
 
     @torch.no_grad()
     def clamp_weights(self):
@@ -76,21 +70,28 @@ class KhaosNet(nn.Module):
         self.feature_transformer.bias.clamp_(
             -quant.FEATURE_WEIGHT_CLAMP, quant.FEATURE_WEIGHT_CLAMP
         )
+        # Post-accumulator weights must fit int16 after * QB.
+        lim = quant.LAYER_WEIGHT_CLAMP
+        self.hidden2.weight.clamp_(-lim, lim)
+        self.output.weight.clamp_(-lim, lim)
 
 
 def quantized_tensors(model):
-    """Convert a trained model to the integer arrays the .nnue format wants.
-
-    Returns (feature_weights, feature_bias, output_weights, output_bias) as
-    flat Python lists of ints, ready for khaosnnue.format.write_net().
-    """
+    """Convert a trained model to the integer arrays write_net() wants:
+    (feature_weights, feature_bias, l2_weights, l2_bias, output_weights,
+    output_bias) as flat Python lists of ints."""
     with torch.no_grad():
-        # (hidden, INPUTS) -> (INPUTS, hidden) so one feature's weights are
-        # contiguous, which is the layout the accumulator update reads.
+        # (hidden, INPUTS) -> (INPUTS, hidden): feature-major for the accumulator.
         fw = model.feature_transformer.weight.t().contiguous()
         feature_weights = torch.round(fw * quant.QA).to(torch.int32)
         feature_bias = torch.round(
             model.feature_transformer.bias * quant.QA
+        ).to(torch.int32)
+
+        # nn.Linear weight is already [out, in] = output-major; no transpose.
+        l2_weights = torch.round(model.hidden2.weight * quant.QB).to(torch.int32)
+        l2_bias = torch.round(
+            model.hidden2.bias * quant.QA * quant.QB
         ).to(torch.int32)
 
         output_weights = torch.round(
@@ -103,6 +104,8 @@ def quantized_tensors(model):
     return (
         feature_weights.flatten().tolist(),
         feature_bias.tolist(),
+        l2_weights.flatten().tolist(),
+        l2_bias.tolist(),
         output_weights.tolist(),
         output_bias,
     )

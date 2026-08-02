@@ -32,9 +32,8 @@ def main():
     model.load_state_dict(state["model"] if "model" in state else state)
     model.eval()
 
-    feature_weights, feature_bias, output_weights, output_bias = (
-        netmodel.quantized_tensors(model)
-    )
+    (feature_weights, feature_bias, l2_weights, l2_bias,
+     output_weights, output_bias) = netmodel.quantized_tensors(model)
 
     worst = quant.accumulator_headroom(
         max(abs(w) for w in feature_weights),
@@ -48,8 +47,8 @@ def main():
         )
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    netformat.write_net(args.out, feature_weights, feature_bias,
-                        output_weights, output_bias)
+    netformat.write_net(args.out, feature_weights, feature_bias, l2_weights,
+                        l2_bias, output_weights, output_bias)
 
     print(f"wrote {args.out} ({netformat.expected_size()} bytes)")
     print("verify it against the engine with:")

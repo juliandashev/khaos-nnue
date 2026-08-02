@@ -14,8 +14,8 @@ which needs PyTorch and so lives separately to keep the engine dependency-free.
 
 | | |
 |---|---|
-| **CPU** | The more cores the better — data generation scales linearly by process. This is the long pole. |
-| **GPU** | Any CUDA card. The net is tiny (768×256×1); an hour of GPU time is plenty per run. Trains on CPU too, just slower. |
+| **CPU** | The more cores the better - data generation scales linearly by process. This is the long pole. |
+| **GPU** | Any CUDA card. The net is small (768×256×32×1); an hour of GPU time is plenty per run. Trains on CPU too, just slower. |
 | **Disk** | ~100 bytes per position of text, ~72 bytes packed. 100M positions ≈ 10 GB text + 7 GB packed. |
 | **Python** | 3.9+ with PyTorch and numpy. |
 
@@ -43,7 +43,7 @@ cd chess-engine && ./bin/tests/nnue_tests && cd ..
 ```
 
 All 7 tests must pass. They check that the incrementally updated accumulator
-matches a from-scratch rebuild over random games — if that fails, stop, because
+matches a from-scratch rebuild over random games - if that fails, stop, because
 every net you train afterwards will be evaluated with a corrupted accumulator.
 
 ### 1. Set up this repo
@@ -56,7 +56,7 @@ python3 -m venv venv
 ```
 
 Sanity-check the format contract between Python and C++ before spending days on
-data — this needs no torch:
+data - this needs no torch:
 
 ```bash
 python3 scripts/make_test_net.py nets/test.nnue --seed 1
@@ -65,7 +65,7 @@ python3 scripts/check_engine.py ../chess-engine/bin/KhaosChess nets/test.nnue
 
 Expected: `all 8 compared positions agree exactly (4 skipped: ...)`. This means
 the engine and the trainer compute byte-identical evaluations from the same
-weights. **If it disagrees, nothing downstream is trustworthy** — the feature
+weights. **If it disagrees, nothing downstream is trustworthy** - the feature
 indexing or quantization has drifted and a trained net will play badly for
 reasons no amount of training fixes.
 
@@ -78,13 +78,15 @@ reasons no amount of training fixes.
 Arguments: `<engine> <out-dir> <games-per-shard> <nodes-per-move> <parallel-jobs>`.
 
 One process per core, each writing `data/shard_NN.txt`. Progress lands in
-`data/shard_NN.log`. Interrupting is safe — datagen appends and flushes, so
+`data/shard_NN.log`. Interrupting is safe - datagen appends and flushes, so
 whatever finished is usable.
 
-**How much?** A first net wants **50–100M positions** minimum. At 5000
-nodes/move a core produces very roughly 30–60k positions/hour, so 32 cores gets
-you ~50M in a day or two. Start a small run (say `2000` games/shard), walk the
-whole pipeline to a working net, *then* commit to the big run.
+**How much?** The `768 → 256 → 32 → 1` net has more parameters than a flat
+single-layer one, so it wants more data to fill: aim for **100-200M positions**
+rather than the ~50M a flat net gets by on. At 5000 nodes/move a core produces
+very roughly 30-60k positions/hour, so 32 cores gets you ~100M in two to three
+days. Start a small run (say `2000` games/shard), walk the whole pipeline to a
+working net, *then* commit to the big run.
 
 Node count is the quality/quantity trade-off. 5000 is a reasonable start. Going
 below ~2000 makes the labels too noisy to be worth much.
@@ -95,7 +97,7 @@ Each retained position is one line:
 <fen> | <score> | <result>
 ```
 
-`score` is the search score **in engine units, not centipawns** — a pawn is
+`score` is the search score **in engine units, not centipawns** - a pawn is
 about 410 here. `result` is the game result, both from White's point of view.
 Positions in check, or where the best move is a capture or promotion, are
 filtered out during generation: a static evaluation should not be trained to
@@ -128,7 +130,7 @@ loadable while training continues.
 
 Knobs worth touching:
 
-- `--blend` (default 0.7) — weight on the search score vs the game result.
+- `--blend` (default 0.7) - weight on the search score vs the game result.
   1.0 trains purely on what the search thought, 0.0 purely on how games ended.
   The score is dense and low-variance but inherits the search's blind spots; the
   result is unbiased but very noisy per position. If the net plateaus, try 0.5.
@@ -142,7 +144,7 @@ python3 scripts/check_engine.py ../chess-engine/bin/KhaosChess nets/run1/best.nn
 ```
 
 Same exact-agreement check as step 1, now on a real net. Always run this before
-judging a net's strength — it separates "the net is weak" from "the net is being
+judging a net's strength - it separates "the net is weak" from "the net is being
 evaluated wrongly."
 
 ### 6. Play it
@@ -178,7 +180,7 @@ closes as you add data, not by the first result.
 |---|---|
 | `setoption name EvalFile value <path>` | Load a net. Empty or `<empty>` unloads and reverts to the hand-crafted evaluation. |
 | `setoption name UseNNUE value false` | Keep the net loaded but ignore it. Useful for A/B matches from one binary. |
-| `eval` | Prints `static eval: <n> (nnue\|hce\|endgame)` — the number the search actually uses, and which path produced it. |
+| `eval` | Prints `static eval: <n> (nnue\|hce\|endgame)` - the number the search actually uses, and which path produced it. |
 | `datagen games N nodes N seed N randply N maxply N out PATH report N` | Self-play generation. Blocks until done. |
 
 With no net loaded the engine behaves exactly as before, so this is all
@@ -191,7 +193,7 @@ opt-in.
 **Training aborts immediately with `TypeError: can't assign a numpy.float32 to a
 torch.FloatTensor`.** Recent torch refuses a numpy-2 scalar written straight into
 a tensor element. Fixed in `dataset.py` (the result target is coerced to a Python
-float); if you hit this you are on an older checkout — pull.
+float); if you hit this you are on an older checkout - pull.
 
 **`CUDA error: no kernel image is available for execution on the device`.** The
 installed torch wheel has no kernels compiled for your GPU's compute capability.
@@ -204,7 +206,7 @@ GPU with a real kernel launch rather than the flag:
 
 A printed number means the GPU is usable. The kernel error means the wheel and
 card disagree: reinstall the torch build matching the card (older Pascal-era
-cards, compute 6.1, want a `cu118` wheel; newer cards a recent `cuXXX` one — see
+cards, compute 6.1, want a `cu118` wheel; newer cards a recent `cuXXX` one - see
 requirements.txt). This never blocks progress: data generation and every
 verification step are CPU-only.
 
@@ -212,24 +214,29 @@ verification step are CPU-only.
 
 ## Design notes
 
-**Architecture is `768 → 256 → 1`, not HalfKP/HalfKA.** The input is plain
-"piece of type T on square S, from perspective P" — 2 × 6 × 64. Deliberately no
+**Architecture is `768 → 256 → 32 → 1`, not HalfKP/HalfKA.** The input is plain
+"piece of type T on square S, from perspective P", 2 x 6 x 64. Deliberately no
 king bucket, because that keeps a king move an ordinary two-feature update. The
 accumulator therefore never needs a mid-search refresh, which is what lets the
 engine maintain it as a side effect of `place_piece`/`remove_piece`/`move_piece`
 with no accumulator stack at all: `undo_move` replays the inverse piece
-mutations, and integer adds are exactly invertible, so it cannot drift.
+mutations, and integer adds are exactly invertible, so it cannot drift. Only the
+feature transformer (the accumulator) is incremental; the two perspectives are
+concatenated and run through one more hidden layer (`L2`) before the output,
+evaluated fresh each call.
 
 King buckets are the obvious generation-2 upgrade and worth a solid chunk of
 Elo, but they require a refresh path and an accumulator stack. Get generation 1
 working first.
 
-**Quantization.** Feature weights are `round(w * 255)` in int16, output weights
-`round(w * 64)`, output bias pre-scaled by `255 * 64`. Evaluation is
-`sum * 1640 / (255 * 64)` in engine units. The int16 accumulator is the binding
-constraint: 32 pieces' worth of weights must fit, which is why the trainer
-clamps feature weights to ±1.98 after every optimizer step and why `export.py`
-refuses to write a net whose worst case exceeds 32767.
+**Quantization.** A clipped activation in `[0, 255]` represents a float in
+`[0, 1]`. Feature weights are `round(w * 255)` in int16; every post-accumulator
+layer stores weights as `round(w * 64)` and a bias pre-scaled by `255 * 64`, and
+dividing that layer's int32 sum by 64 returns to the activation scale. The final
+output maps back to engine units with `* 1640 / (255 * 64)`. The int16
+accumulator is the binding constraint: 32 pieces' worth of feature weights must
+fit, which is why the trainer clamps them to ±1.98 after every optimizer step
+and why `export.py` refuses a net whose worst case exceeds 32767.
 
 **Endgames still bypass the net.** The engine consults its KPK bitbase and
 specialized mate evaluators before asking the network, because those are exact
@@ -237,7 +244,7 @@ results and small nets are notoriously bad at exactly those positions. That is
 why `check_engine.py` skips them.
 
 **The evaluation is not antisymmetric by construction.** `forward(acc, WHITE)`
-and `forward(acc, BLACK)` are unrelated values for an arbitrary net — the output
+and `forward(acc, BLACK)` are unrelated values for an arbitrary net - the output
 layer has independent weights per perspective half plus a bias. A trained net
 learns approximate antisymmetry from data. Nothing in the search relies on it
 being exact.
@@ -245,8 +252,8 @@ being exact.
 **Speed is the usual way a first NNUE fails.** A net that evaluates better but
 10× slower loses Elo. The incremental accumulator is what makes this viable; the
 current forward pass is plain scalar C++, so if the net is clearly stronger per
-node but weaker per second, hand-vectorizing the accumulator update and output
-layer with AVX2 is the next lever.
+node but weaker per second, hand-vectorizing the accumulator update and the
+dense layers with AVX2 is the next lever.
 
 ---
 
@@ -254,7 +261,7 @@ layer with AVX2 is the next lever.
 
 ```
 khaosnnue/
-  quant.py      quantization constants — must match include/nnue.h
+  quant.py      quantization constants - must match include/nnue.h
   features.py   FEN -> feature indices          (stdlib only)
   format.py     .nnue read/write                (stdlib only)
   refeval.py    reference integer forward pass  (stdlib only)

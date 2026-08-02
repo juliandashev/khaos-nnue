@@ -41,21 +41,32 @@ def evaluate(net, fen):
     own = white_acc if stm == features.WHITE else black_acc
     their = black_acc if stm == features.WHITE else white_acc
 
+    qa, qb = quant.QA, quant.QB
+    hidden, l2 = quant.HIDDEN, quant.L2
+
+    # Concatenated clipped activations: own then their.
+    x = [min(max(v, 0), qa) for v in own] + [min(max(v, 0), qa) for v in their]
+
+    # Hidden layer 2: // qb returns to the qa scale, then clip. Negatives clip
+    # to 0 either way, so // matches the engine's truncating divide here.
+    l2w, l2b = net["l2_weights"], net["l2_bias"]
+    h = []
+    for j in range(l2):
+        s = l2b[j]
+        base = j * 2 * hidden
+        for i in range(2 * hidden):
+            s += x[i] * l2w[base + i]
+        h.append(min(max(s // qb, 0), qa))
+
+    # Output layer.
     ow = net["output_weights"]
-    hidden = quant.HIDDEN
-    qa = quant.QA
-
-    total = 0
-    for i in range(hidden):
-        total += min(max(own[i], 0), qa) * ow[i]
-    for i in range(hidden):
-        total += min(max(their[i], 0), qa) * ow[hidden + i]
-
-    total += net["output_bias"]
+    total = net["output_bias"]
+    for j in range(l2):
+        total += h[j] * ow[j]
 
     # Integer division truncating toward zero, matching C++ '/' on int64.
     scaled = total * quant.EVAL_SCALE
-    denom = qa * quant.QB
+    denom = qa * qb
     result = abs(scaled) // denom
     return -result if scaled < 0 else result
 
