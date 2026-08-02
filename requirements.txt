@@ -1,5 +1,9 @@
-# Install torch matching the target machine's CUDA version; the generic wheel
-# below is CPU+CUDA for common Linux setups. See https://pytorch.org/get-started
-# if the GPU is not picked up (check with: python -c "import torch; print(torch.cuda.is_available())").
+# Install torch matching the target machine's GPU; the generic wheel below may
+# lack compiled kernels for older cards. is_available() can return True even when
+# the kernels are missing, so verify with a real op rather than the flag:
+#   python -c "import torch; x=torch.randn(999,999,device='cuda'); print((x@x).sum().item())"
+# If that raises "no kernel image", reinstall from the CUDA build matching the
+# card (see https://pytorch.org/get-started). See the Troubleshooting section in
+# README.md. Data generation and all verification steps are CPU-only regardless.
 torch>=2.0
 numpy>=1.24

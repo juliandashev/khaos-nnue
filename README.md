@@ -186,6 +186,30 @@ opt-in.
 
 ---
 
+## Troubleshooting
+
+**Training aborts immediately with `TypeError: can't assign a numpy.float32 to a
+torch.FloatTensor`.** Recent torch refuses a numpy-2 scalar written straight into
+a tensor element. Fixed in `dataset.py` (the result target is coerced to a Python
+float); if you hit this you are on an older checkout — pull.
+
+**`CUDA error: no kernel image is available for execution on the device`.** The
+installed torch wheel has no kernels compiled for your GPU's compute capability.
+`torch.cuda.is_available()` can still return `True` in this state, so confirm the
+GPU with a real kernel launch rather than the flag:
+
+```bash
+./venv/bin/python -c "import torch; x=torch.randn(4000,4000,device='cuda'); print((x@x).sum().item())"
+```
+
+A printed number means the GPU is usable. The kernel error means the wheel and
+card disagree: reinstall the torch build matching the card (older Pascal-era
+cards, compute 6.1, want a `cu118` wheel; newer cards a recent `cuXXX` one — see
+requirements.txt). This never blocks progress: data generation and every
+verification step are CPU-only.
+
+---
+
 ## Design notes
 
 **Architecture is `768 → 256 → 1`, not HalfKP/HalfKA.** The input is plain

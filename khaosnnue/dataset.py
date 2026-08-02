@@ -82,7 +82,7 @@ def collate_batch(samples):
         own[row, own_idx] = 1.0
         their[row, their_idx] = 1.0
         scores[row] = score
-        results[row] = _RESULT_VALUE[result]
+        results[row] = float(_RESULT_VALUE[result])
 
     return own, their, scores, results
 
